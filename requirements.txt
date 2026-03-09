@@ -1,0 +1,3 @@
+pyodbc
+psutil
+psycopg2-binary
