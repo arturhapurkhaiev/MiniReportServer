@@ -12,6 +12,7 @@ import os
 import subprocess
 import webbrowser
 import sys
+import datetime
 
 PORT = 1433
 
@@ -26,10 +27,21 @@ ADMIN_FILE = os.path.join(BASE_DIR, "..", "config", "admin.env")
 SQL_USER = ""
 SQL_PASS = ""
 
+# ------------------------------------------------
+# STATUS VARIABLES
+# ------------------------------------------------
 
-# -------------------------
+platform_var = None
+postgres_var = None
+metabase_var = None
+cron_var = None
+last_update_var = None
+stores_var = None
+
+
+# ------------------------------------------------
 # ADMIN LOGIN
-# -------------------------
+# ------------------------------------------------
 
 def load_admin_password():
 
@@ -67,9 +79,9 @@ def admin_login():
     root.destroy()
 
 
-# -------------------------
+# ------------------------------------------------
 # LOG
-# -------------------------
+# ------------------------------------------------
 
 def log(msg):
 
@@ -78,9 +90,128 @@ def log(msg):
     root.update()
 
 
-# -------------------------
+# ------------------------------------------------
+# STATUS CHECKS
+# ------------------------------------------------
+
+def run_wsl(cmd):
+
+    try:
+
+        result = subprocess.run(
+            ["wsl", "-d", "Ubuntu", "bash", "-c", cmd],
+            capture_output=True,
+            text=True
+        )
+
+        return result.stdout.strip()
+
+    except:
+        return ""
+
+
+def check_platform():
+
+    result = run_wsl("test -d /opt/dwh && echo OK")
+
+    return result == "OK"
+
+
+def check_container(name):
+
+    result = run_wsl(f"docker ps --filter name={name} --format '{{{{.Names}}}}'")
+
+    return name in result
+
+
+def check_cron():
+
+    result = run_wsl("crontab -l")
+
+    if "update_stores.py" in result:
+        return True
+
+    return False
+
+
+def get_last_update():
+
+    result = run_wsl("cat /opt/dwh/logs/update.log 2>/dev/null | tail -n 1")
+
+    if result:
+        return result
+
+    return "no updates yet"
+
+
+def check_stores():
+
+    try:
+
+        with open(CONFIG_FILE) as f:
+
+            data = json.load(f)
+
+        stores = data.get("stores", [])
+
+        online = 0
+
+        for store in stores:
+
+            ip = store["host"]
+
+            s = socket.socket()
+            s.settimeout(0.5)
+
+            try:
+
+                s.connect((ip, PORT))
+                online += 1
+
+            except:
+
+                pass
+
+            s.close()
+
+        return f"{online}/{len(stores)} online"
+
+    except:
+
+        return "no stores"
+
+
+def refresh_status():
+
+    if check_platform():
+
+        platform_var.set("INSTALLED")
+
+    else:
+
+        platform_var.set("NOT INSTALLED")
+        return
+
+    postgres_var.set(
+        "RUNNING" if check_container("dwh-postgres") else "STOPPED"
+    )
+
+    metabase_var.set(
+        "RUNNING" if check_container("dwh-metabase") else "STOPPED"
+    )
+
+    cron_var.set(
+        "ACTIVE" if check_cron() else "NOT CONFIGURED"
+    )
+
+    last_update_var.set(get_last_update())
+
+    stores_var.set(check_stores())
+
+
+# ------------------------------------------------
 # Detect VPN network
-# -------------------------
+# ------------------------------------------------
 
 def get_wireguard_network():
 
@@ -101,9 +232,9 @@ def get_wireguard_network():
     return None
 
 
-# -------------------------
+# ------------------------------------------------
 # Port scan
-# -------------------------
+# ------------------------------------------------
 
 def check_port(ip):
 
@@ -121,9 +252,9 @@ def check_port(ip):
         return None
 
 
-# -------------------------
+# ------------------------------------------------
 # Read MSSQL info
-# -------------------------
+# ------------------------------------------------
 
 def get_store_info(ip):
 
@@ -196,9 +327,9 @@ def get_store_info(ip):
     return results
 
 
-# -------------------------
+# ------------------------------------------------
 # Toggle checkbox
-# -------------------------
+# ------------------------------------------------
 
 def toggle_check(event):
 
@@ -217,9 +348,9 @@ def toggle_check(event):
     tree.item(item, values=values)
 
 
-# -------------------------
+# ------------------------------------------------
 # Scan network
-# -------------------------
+# ------------------------------------------------
 
 def scan_network():
 
@@ -275,27 +406,9 @@ def scan_network():
     status_label.config(text=f"{len(stores)} stores found")
 
 
-# -------------------------
-# Get selected
-# -------------------------
-
-def get_selected():
-
-    selected = []
-
-    for item in tree.get_children():
-
-        values = tree.item(item, "values")
-
-        if values[0] == "☑":
-            selected.append(values)
-
-    return selected
-
-
-# -------------------------
-# Save config
-# -------------------------
+# ------------------------------------------------
+# Generate config
+# ------------------------------------------------
 
 def save_config(selected):
 
@@ -325,13 +438,16 @@ def save_config(selected):
     log("Configuration saved")
 
 
-# -------------------------
-# Generate config
-# -------------------------
-
 def install_selected():
 
-    selected = get_selected()
+    selected = []
+
+    for item in tree.get_children():
+
+        values = tree.item(item, "values")
+
+        if values[0] == "☑":
+            selected.append(values)
 
     if not selected:
 
@@ -341,12 +457,11 @@ def install_selected():
     save_config(selected)
 
     log("Config ready for installer")
-    status_label.config(text="Config generated")
 
 
-# -------------------------
+# ------------------------------------------------
 # Install server
-# -------------------------
+# ------------------------------------------------
 
 def install_server():
 
@@ -358,12 +473,10 @@ def install_server():
          "-File", "../scripts/install_server.ps1"]
     )
 
-    status_label.config(text="Installer started")
 
-
-# -------------------------
+# ------------------------------------------------
 # Rebuild DWH
-# -------------------------
+# ------------------------------------------------
 
 def rebuild_dwh():
 
@@ -374,31 +487,65 @@ def rebuild_dwh():
          "bash", "-c", "cd /opt/dwh && make rebuild"]
     )
 
-    status_label.config(text="Rebuild started")
 
-
-# -------------------------
+# ------------------------------------------------
 # Open reports
-# -------------------------
+# ------------------------------------------------
 
 def open_reports():
 
     webbrowser.open("http://localhost:3000")
 
 
-# -------------------------
+# ------------------------------------------------
 # START
-# -------------------------
+# ------------------------------------------------
 
 admin_login()
 
 root = tk.Tk()
 root.title("MiniSoft Analytics Control Center")
-root.geometry("950x720")
+root.geometry("950x760")
+
+platform_var = tk.StringVar(value="UNKNOWN")
+postgres_var = tk.StringVar(value="UNKNOWN")
+metabase_var = tk.StringVar(value="UNKNOWN")
+cron_var = tk.StringVar(value="UNKNOWN")
+last_update_var = tk.StringVar(value="UNKNOWN")
+stores_var = tk.StringVar(value="UNKNOWN")
 
 title = tk.Label(root, text="MiniSoft Analytics Control Center", font=("Arial", 14))
 title.pack(pady=10)
 
+# STATUS PANEL
+
+status_frame = tk.Frame(root)
+status_frame.pack(pady=10)
+
+tk.Label(status_frame, text="Server Status", font=("Arial", 11)).grid(row=0, column=0, columnspan=2)
+
+tk.Label(status_frame, text="Platform").grid(row=1, column=0, sticky="w")
+tk.Label(status_frame, textvariable=platform_var).grid(row=1, column=1)
+
+tk.Label(status_frame, text="Postgres").grid(row=2, column=0, sticky="w")
+tk.Label(status_frame, textvariable=postgres_var).grid(row=2, column=1)
+
+tk.Label(status_frame, text="Metabase").grid(row=3, column=0, sticky="w")
+tk.Label(status_frame, textvariable=metabase_var).grid(row=3, column=1)
+
+tk.Label(status_frame, text="Cron").grid(row=4, column=0, sticky="w")
+tk.Label(status_frame, textvariable=cron_var).grid(row=4, column=1)
+
+tk.Label(status_frame, text="Last Update").grid(row=5, column=0, sticky="w")
+tk.Label(status_frame, textvariable=last_update_var).grid(row=5, column=1)
+
+tk.Label(status_frame, text="Stores").grid(row=6, column=0, sticky="w")
+tk.Label(status_frame, textvariable=stores_var).grid(row=6, column=1)
+
+refresh_btn = tk.Button(status_frame, text="Refresh Status", command=refresh_status)
+refresh_btn.grid(row=7, column=0, columnspan=2, pady=5)
+
+# CREDENTIALS
 
 cred_frame = tk.Frame(root)
 cred_frame.pack(pady=10)
@@ -413,10 +560,12 @@ tk.Label(cred_frame, text="SQL Password").grid(row=1, column=0)
 sql_pass_entry = tk.Entry(cred_frame, show="*", width=20)
 sql_pass_entry.grid(row=1, column=1)
 
+# SCAN BUTTON
 
 scan_btn = tk.Button(root, text="Scan VPN network", width=20, command=scan_network)
 scan_btn.pack(pady=10)
 
+# TABLE
 
 columns = ("check", "ip", "db", "store", "version")
 
@@ -438,6 +587,7 @@ tree.pack(fill="both", expand=True, pady=10)
 
 tree.bind("<Button-1>", toggle_check)
 
+# ACTION BUTTONS
 
 install_btn = tk.Button(root, text="Generate config", width=25, command=install_selected)
 install_btn.pack(pady=5)
@@ -451,13 +601,14 @@ rebuild_btn.pack(pady=5)
 reports_btn = tk.Button(root, text="Open Reports", width=25, command=open_reports)
 reports_btn.pack(pady=5)
 
+# LOG
 
 log_box = tk.Text(root, height=12)
 log_box.pack(fill="both", padx=10, pady=10)
 
-
 status_label = tk.Label(root, text="Idle")
 status_label.pack(pady=10)
 
+refresh_status()
 
 root.mainloop()
