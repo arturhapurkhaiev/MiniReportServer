@@ -14,4 +14,4 @@ python3-pip \
 freetds-dev \
 freetds-bin
 
-echo "WSL dependencies installed"
+echo "Ubuntu dependencies installed"
