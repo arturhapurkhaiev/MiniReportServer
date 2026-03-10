@@ -12,7 +12,7 @@ import os
 import subprocess
 import webbrowser
 import sys
-import datetime
+from datetime import datetime
 
 PORT = 1433
 
@@ -28,18 +28,6 @@ SQL_USER = ""
 SQL_PASS = ""
 
 # ------------------------------------------------
-# STATUS VARIABLES
-# ------------------------------------------------
-
-platform_var = None
-postgres_var = None
-metabase_var = None
-cron_var = None
-last_update_var = None
-stores_var = None
-
-
-# ------------------------------------------------
 # ADMIN LOGIN
 # ------------------------------------------------
 
@@ -51,7 +39,7 @@ def load_admin_password():
                 if line.startswith("ADMIN_PASSWORD"):
                     return line.strip().split("=")[1]
     except:
-        return None
+        return "admin"
 
 
 def admin_login():
@@ -91,60 +79,104 @@ def log(msg):
 
 
 # ------------------------------------------------
-# STATUS CHECKS
+# SERVER STATUS
 # ------------------------------------------------
 
-def run_wsl(cmd):
+def check_server():
 
     try:
 
-        result = subprocess.run(
-            ["wsl", "-d", "Ubuntu", "bash", "-c", cmd],
-            capture_output=True,
-            text=True
-        )
+        s = socket.socket()
+        s.settimeout(1)
 
-        return result.stdout.strip()
+        s.connect(("127.0.0.1", 3000))
+
+        s.close()
+
+        return "Metabase running"
 
     except:
-        return ""
+
+        return "Server offline"
 
 
-def check_platform():
-
-    result = run_wsl("test -d /opt/dwh && echo OK")
-
-    return result == "OK"
-
-
-def check_container(name):
-
-    result = run_wsl(f"docker ps --filter name={name} --format '{{{{.Names}}}}'")
-
-    return name in result
-
+# ------------------------------------------------
+# CRON STATUS
+# ------------------------------------------------
 
 def check_cron():
 
-    result = run_wsl("crontab -l")
+    try:
 
-    if "update_stores.py" in result:
-        return True
+        result = subprocess.check_output(
+            ["wsl", "crontab", "-l"],
+            stderr=subprocess.DEVNULL
+        ).decode()
 
-    return False
+        if "update_stores.py" in result:
+
+            return "Cron active"
+
+    except:
+
+        pass
+
+    return "Cron not configured"
 
 
-def get_last_update():
+# ------------------------------------------------
+# LAST UPDATE
+# ------------------------------------------------
 
-    result = run_wsl("cat /opt/dwh/logs/update.log 2>/dev/null | tail -n 1")
+def last_update():
 
-    if result:
-        return result
+    log_file = "/opt/dwh/logs/update.log"
 
-    return "no updates yet"
+    try:
+
+        result = subprocess.check_output(
+            ["wsl", "bash", "-c", f"tail -n 1 {log_file}"],
+            stderr=subprocess.DEVNULL
+        ).decode()
+
+        return result.strip()
+
+    except:
+
+        return "Unknown"
 
 
-def check_stores():
+# ------------------------------------------------
+# STORE STATUS
+# ------------------------------------------------
+
+def check_store(host):
+
+    s = socket.socket()
+    s.settimeout(0.5)
+
+    try:
+
+        s.connect((host, PORT))
+
+        s.close()
+
+        return "online"
+
+    except:
+
+        return "offline"
+
+
+# ------------------------------------------------
+# REFRESH STATUS
+# ------------------------------------------------
+
+def refresh_status():
+
+    server_status.set(check_server())
+    cron_status.set(check_cron())
+    last_update_status.set(last_update())
 
     try:
 
@@ -152,61 +184,19 @@ def check_stores():
 
             data = json.load(f)
 
-        stores = data.get("stores", [])
-
         online = 0
 
-        for store in stores:
+        for store in data["stores"]:
 
-            ip = store["host"]
+            if check_store(store["host"]) == "online":
 
-            s = socket.socket()
-            s.settimeout(0.5)
-
-            try:
-
-                s.connect((ip, PORT))
                 online += 1
 
-            except:
-
-                pass
-
-            s.close()
-
-        return f"{online}/{len(stores)} online"
+        stores_status.set(f"{online} / {len(data['stores'])} online")
 
     except:
 
-        return "no stores"
-
-
-def refresh_status():
-
-    if check_platform():
-
-        platform_var.set("INSTALLED")
-
-    else:
-
-        platform_var.set("NOT INSTALLED")
-        return
-
-    postgres_var.set(
-        "RUNNING" if check_container("dwh-postgres") else "STOPPED"
-    )
-
-    metabase_var.set(
-        "RUNNING" if check_container("dwh-metabase") else "STOPPED"
-    )
-
-    cron_var.set(
-        "ACTIVE" if check_cron() else "NOT CONFIGURED"
-    )
-
-    last_update_var.set(get_last_update())
-
-    stores_var.set(check_stores())
+        stores_status.set("No stores configured")
 
 
 # ------------------------------------------------
@@ -233,7 +223,7 @@ def get_wireguard_network():
 
 
 # ------------------------------------------------
-# Port scan
+# PORT SCAN
 # ------------------------------------------------
 
 def check_port(ip):
@@ -253,7 +243,7 @@ def check_port(ip):
 
 
 # ------------------------------------------------
-# Read MSSQL info
+# MSSQL INFO
 # ------------------------------------------------
 
 def get_store_info(ip):
@@ -328,28 +318,7 @@ def get_store_info(ip):
 
 
 # ------------------------------------------------
-# Toggle checkbox
-# ------------------------------------------------
-
-def toggle_check(event):
-
-    item = tree.identify_row(event.y)
-
-    if not item:
-        return
-
-    values = list(tree.item(item, "values"))
-
-    if values[0] == "☐":
-        values[0] = "☑"
-    else:
-        values[0] = "☐"
-
-    tree.item(item, values=values)
-
-
-# ------------------------------------------------
-# Scan network
+# SCAN NETWORK
 # ------------------------------------------------
 
 def scan_network():
@@ -368,10 +337,10 @@ def scan_network():
 
     if network is None:
 
-        status_label.config(text="WireGuard dwh-vpn not connected")
+        status_label.config(text="WireGuard not connected")
         return
 
-    log(f"Scanning network {network}0/24")
+    log(f"Scanning {network}0/24")
 
     ips = [network + str(i) for i in range(1, 255)]
 
@@ -403,14 +372,27 @@ def scan_network():
 
     log(f"Found {len(stores)} stores")
 
-    status_label.config(text=f"{len(stores)} stores found")
-
 
 # ------------------------------------------------
-# Generate config
+# SAVE CONFIG
 # ------------------------------------------------
 
-def save_config(selected):
+def save_config():
+
+    selected = []
+
+    for item in tree.get_children():
+
+        values = tree.item(item, "values")
+
+        if values[0] == "☑":
+
+            selected.append(values)
+
+    if not selected:
+
+        log("No stores selected")
+        return
 
     os.makedirs(os.path.join(BASE_DIR, "..", "config"), exist_ok=True)
 
@@ -428,6 +410,7 @@ def save_config(selected):
     data = {"stores": stores_json}
 
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+
         json.dump(data, f, indent=2, ensure_ascii=False)
 
     with open(ENV_FILE, "w") as f:
@@ -438,58 +421,41 @@ def save_config(selected):
     log("Configuration saved")
 
 
-def install_selected():
-
-    selected = []
-
-    for item in tree.get_children():
-
-        values = tree.item(item, "values")
-
-        if values[0] == "☑":
-            selected.append(values)
-
-    if not selected:
-
-        log("No stores selected")
-        return
-
-    save_config(selected)
-
-    log("Config ready for installer")
-
-
 # ------------------------------------------------
-# Install server
+# INSTALL SERVER
 # ------------------------------------------------
 
 def install_server():
 
-    log("Starting server installation")
+    script = os.path.abspath(
+        os.path.join(BASE_DIR, "..", "scripts", "install_server.ps1")
+    )
+
+    log("Running installer")
 
     subprocess.Popen(
         ["powershell",
          "-ExecutionPolicy", "Bypass",
-         "-File", "../scripts/install_server.ps1"]
+         "-File",
+         script]
     )
 
 
 # ------------------------------------------------
-# Rebuild DWH
+# REBUILD DWH
 # ------------------------------------------------
 
 def rebuild_dwh():
 
-    log("Starting DWH rebuild")
+    log("Starting rebuild")
 
     subprocess.Popen(
-        ["wsl", "-d", "Ubuntu",
-         "bash", "-c", "cd /opt/dwh && make rebuild"]
+        ["wsl", "bash", "-c", "cd /opt/dwh && make rebuild"]
     )
 
 
 # ------------------------------------------------
-# Open reports
+# OPEN REPORTS
 # ------------------------------------------------
 
 def open_reports():
@@ -507,89 +473,55 @@ root = tk.Tk()
 root.title("MiniSoft Analytics Control Center")
 root.geometry("950x760")
 
-platform_var = tk.StringVar(value="UNKNOWN")
-postgres_var = tk.StringVar(value="UNKNOWN")
-metabase_var = tk.StringVar(value="UNKNOWN")
-cron_var = tk.StringVar(value="UNKNOWN")
-last_update_var = tk.StringVar(value="UNKNOWN")
-stores_var = tk.StringVar(value="UNKNOWN")
-
 title = tk.Label(root, text="MiniSoft Analytics Control Center", font=("Arial", 14))
 title.pack(pady=10)
 
-# STATUS PANEL
-
 status_frame = tk.Frame(root)
-status_frame.pack(pady=10)
+status_frame.pack()
 
-tk.Label(status_frame, text="Server Status", font=("Arial", 11)).grid(row=0, column=0, columnspan=2)
+server_status = tk.StringVar()
+cron_status = tk.StringVar()
+stores_status = tk.StringVar()
+last_update_status = tk.StringVar()
 
-tk.Label(status_frame, text="Platform").grid(row=1, column=0, sticky="w")
-tk.Label(status_frame, textvariable=platform_var).grid(row=1, column=1)
+tk.Label(status_frame, text="Server:").grid(row=0, column=0)
+tk.Label(status_frame, textvariable=server_status).grid(row=0, column=1)
 
-tk.Label(status_frame, text="Postgres").grid(row=2, column=0, sticky="w")
-tk.Label(status_frame, textvariable=postgres_var).grid(row=2, column=1)
+tk.Label(status_frame, text="Cron:").grid(row=1, column=0)
+tk.Label(status_frame, textvariable=cron_status).grid(row=1, column=1)
 
-tk.Label(status_frame, text="Metabase").grid(row=3, column=0, sticky="w")
-tk.Label(status_frame, textvariable=metabase_var).grid(row=3, column=1)
+tk.Label(status_frame, text="Stores:").grid(row=2, column=0)
+tk.Label(status_frame, textvariable=stores_status).grid(row=2, column=1)
 
-tk.Label(status_frame, text="Cron").grid(row=4, column=0, sticky="w")
-tk.Label(status_frame, textvariable=cron_var).grid(row=4, column=1)
+tk.Label(status_frame, text="Last update:").grid(row=3, column=0)
+tk.Label(status_frame, textvariable=last_update_status).grid(row=3, column=1)
 
-tk.Label(status_frame, text="Last Update").grid(row=5, column=0, sticky="w")
-tk.Label(status_frame, textvariable=last_update_var).grid(row=5, column=1)
-
-tk.Label(status_frame, text="Stores").grid(row=6, column=0, sticky="w")
-tk.Label(status_frame, textvariable=stores_var).grid(row=6, column=1)
-
-refresh_btn = tk.Button(status_frame, text="Refresh Status", command=refresh_status)
-refresh_btn.grid(row=7, column=0, columnspan=2, pady=5)
-
-# CREDENTIALS
+refresh_status()
 
 cred_frame = tk.Frame(root)
 cred_frame.pack(pady=10)
 
 tk.Label(cred_frame, text="SQL Login").grid(row=0, column=0)
-
-sql_user_entry = tk.Entry(cred_frame, width=20)
+sql_user_entry = tk.Entry(cred_frame)
 sql_user_entry.grid(row=0, column=1)
 
 tk.Label(cred_frame, text="SQL Password").grid(row=1, column=0)
-
-sql_pass_entry = tk.Entry(cred_frame, show="*", width=20)
+sql_pass_entry = tk.Entry(cred_frame, show="*")
 sql_pass_entry.grid(row=1, column=1)
-
-# SCAN BUTTON
 
 scan_btn = tk.Button(root, text="Scan VPN network", width=20, command=scan_network)
 scan_btn.pack(pady=10)
-
-# TABLE
 
 columns = ("check", "ip", "db", "store", "version")
 
 tree = ttk.Treeview(root, columns=columns, show="headings")
 
-tree.heading("check", text="")
-tree.heading("ip", text="Server IP")
-tree.heading("db", text="Database")
-tree.heading("store", text="Store name")
-tree.heading("version", text="Version")
-
-tree.column("check", width=40, anchor="center")
-tree.column("ip", width=150)
-tree.column("db", width=160)
-tree.column("store", width=420)
-tree.column("version", width=80)
+for col in columns:
+    tree.heading(col, text=col)
 
 tree.pack(fill="both", expand=True, pady=10)
 
-tree.bind("<Button-1>", toggle_check)
-
-# ACTION BUTTONS
-
-install_btn = tk.Button(root, text="Generate config", width=25, command=install_selected)
+install_btn = tk.Button(root, text="Generate config", width=25, command=save_config)
 install_btn.pack(pady=5)
 
 install_server_btn = tk.Button(root, text="Install / Update Server", width=25, command=install_server)
@@ -601,14 +533,10 @@ rebuild_btn.pack(pady=5)
 reports_btn = tk.Button(root, text="Open Reports", width=25, command=open_reports)
 reports_btn.pack(pady=5)
 
-# LOG
-
 log_box = tk.Text(root, height=12)
 log_box.pack(fill="both", padx=10, pady=10)
 
 status_label = tk.Label(root, text="Idle")
 status_label.pack(pady=10)
-
-refresh_status()
 
 root.mainloop()
