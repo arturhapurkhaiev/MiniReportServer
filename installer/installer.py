@@ -1,62 +1,128 @@
 import tkinter as tk
-from tkinter import ttk
 import os
 import shutil
+import subprocess
 import sys
 
 INSTALL_DIR = r"C:\MiniReportServer"
 
+# ------------------------------------------------
+# Detect path (works for .py and .exe)
+# ------------------------------------------------
+
+if getattr(sys, 'frozen', False):
+    BASE_DIR = sys._MEIPASS
+else:
+    BASE_DIR = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..")
+    )
+
+
+# ------------------------------------------------
+# LOG
+# ------------------------------------------------
 
 def log(msg):
+
     log_box.insert(tk.END, msg + "\n")
     log_box.see(tk.END)
     root.update()
 
 
+# ------------------------------------------------
+# INSTALL
+# ------------------------------------------------
+
 def install():
 
     install_btn.config(state="disabled")
 
-    source_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    log("Starting installation")
 
-    log("Creating installation directory")
+    if not os.path.exists(INSTALL_DIR):
 
-    os.makedirs(INSTALL_DIR, exist_ok=True)
+        log("Creating installation directory")
+
+        os.makedirs(INSTALL_DIR)
 
     log("Copying files")
 
-    for item in os.listdir(source_dir):
+    for item in os.listdir(BASE_DIR):
 
         if item == "installer":
             continue
 
-        s = os.path.join(source_dir, item)
-        d = os.path.join(INSTALL_DIR, item)
+        src = os.path.join(BASE_DIR, item)
+        dst = os.path.join(INSTALL_DIR, item)
 
-        if os.path.isdir(s):
-            shutil.copytree(s, d, dirs_exist_ok=True)
-        else:
-            shutil.copy2(s, d)
+        try:
 
-    create_shortcuts()
+            if os.path.isdir(src):
 
-    log("Installation completed")
+                shutil.copytree(src, dst, dirs_exist_ok=True)
+
+            else:
+
+                shutil.copy2(src, dst)
+
+        except Exception as e:
+
+            log(f"Skipped {item}: {e}")
+
+    log("Files copied")
+
+    install_python()
+
+    create_shortcut()
+
+    log("Installation finished")
     log("Run 'MiniSoft Admin' from Desktop")
 
 
-def create_shortcuts():
+# ------------------------------------------------
+# INSTALL PYTHON LIBRARIES
+# ------------------------------------------------
 
-    desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+def install_python():
 
-    admin = os.path.join(desktop, "MiniSoft Admin.bat")
+    log("Installing Python libraries")
 
-    with open(admin, "w") as f:
-        f.write(
-            'python "C:\\MiniReportServer\\manager\\manager.py"'
-        )
+    subprocess.call([
+        "pip",
+        "install",
+        "-r",
+        os.path.join(INSTALL_DIR, "requirements.txt")
+    ])
 
 
+# ------------------------------------------------
+# CREATE DESKTOP SHORTCUT
+# ------------------------------------------------
+
+def create_shortcut():
+
+    log("Creating desktop shortcut")
+
+    desktop = os.path.join(
+        os.path.expanduser("~"),
+        "Desktop"
+    )
+
+    shortcut = os.path.join(
+        desktop,
+        "MiniSoft Admin.bat"
+    )
+
+    target = r'C:\MiniReportServer\manager\manager.py'
+
+    with open(shortcut, "w") as f:
+
+        f.write(f'python "{target}"')
+
+
+# ------------------------------------------------
 # GUI
+# ------------------------------------------------
 
 root = tk.Tk()
 root.title("MiniSoft Analytics Installer")
@@ -72,7 +138,7 @@ title.pack(pady=20)
 
 desc = tk.Label(
     root,
-    text="This wizard installs MiniSoft Reporting Server",
+    text="This wizard installs MiniSoft Reporting Server"
 )
 
 desc.pack(pady=10)
@@ -87,7 +153,13 @@ install_btn = tk.Button(
 
 install_btn.pack(pady=20)
 
-log_box = tk.Text(root,height=10)
-log_box.pack(fill="both",expand=True,padx=20,pady=20)
+log_box = tk.Text(root, height=10)
+
+log_box.pack(
+    fill="both",
+    expand=True,
+    padx=20,
+    pady=20
+)
 
 root.mainloop()
