@@ -7,7 +7,7 @@ Write-Host ""
 $INSTALL_DIR = "C:\MiniReportServer"
 
 # ------------------------------------------------
-# CHECK PYTHON
+# PYTHON
 # ------------------------------------------------
 
 Write-Host "Checking Python..."
@@ -16,7 +16,7 @@ $python = Get-Command python -ErrorAction SilentlyContinue
 
 if (!$python) {
 
-    Write-Host "Python not found. Install Python first."
+    Write-Host "Python not found"
     exit
 }
 
@@ -24,7 +24,7 @@ Write-Host "Python OK"
 Write-Host ""
 
 # ------------------------------------------------
-# INSTALL PYTHON LIBRARIES
+# PYTHON LIBRARIES
 # ------------------------------------------------
 
 Write-Host "Installing Python dependencies..."
@@ -34,7 +34,7 @@ python -m pip install -r "$INSTALL_DIR\requirements.txt"
 Write-Host ""
 
 # ------------------------------------------------
-# CHECK WSL
+# WSL CHECK
 # ------------------------------------------------
 
 Write-Host "Checking WSL..."
@@ -51,7 +51,7 @@ Write-Host "WSL OK"
 Write-Host ""
 
 # ------------------------------------------------
-# INSTALL UBUNTU PACKAGES
+# UBUNTU DEPENDENCIES
 # ------------------------------------------------
 
 Write-Host "Installing Ubuntu packages..."
@@ -61,7 +61,7 @@ wsl bash /mnt/c/MiniReportServer/scripts/install_wsl_deps.sh
 Write-Host ""
 
 # ------------------------------------------------
-# CLONE DWH PLATFORM
+# INSTALL DWH PLATFORM
 # ------------------------------------------------
 
 Write-Host "Installing DWH platform..."
@@ -79,8 +79,13 @@ Write-Host "Copying configuration..."
 
 wsl bash -c "sudo mkdir -p /opt/dwh/config"
 
-wsl bash -c "sudo cp /mnt/c/MiniReportServer/config/stores.json /opt/dwh/config/"
-wsl bash -c "sudo cp /mnt/c/MiniReportServer/config/credentials.env /opt/dwh/config/"
+if (Test-Path "$INSTALL_DIR\config\stores.json") {
+    wsl bash -c "sudo cp /mnt/c/MiniReportServer/config/stores.json /opt/dwh/config/"
+}
+
+if (Test-Path "$INSTALL_DIR\config\credentials.env") {
+    wsl bash -c "sudo cp /mnt/c/MiniReportServer/config/credentials.env /opt/dwh/config/"
+}
 
 Write-Host ""
 
