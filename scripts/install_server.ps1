@@ -15,7 +15,6 @@ Write-Host "Checking Python..."
 $python = Get-Command python -ErrorAction SilentlyContinue
 
 if (!$python) {
-
     Write-Host "Python not found. Install Python first."
     exit
 }
@@ -42,8 +41,9 @@ Write-Host "Checking WSL..."
 wsl -l > $null 2>&1
 
 if ($LASTEXITCODE -ne 0) {
-
     Write-Host "WSL not installed"
+    Write-Host "Install WSL first using:"
+    Write-Host "wsl --install -d Ubuntu"
     exit
 }
 
@@ -61,7 +61,7 @@ wsl bash /mnt/c/MiniReportServer/scripts/install_wsl_deps.sh
 Write-Host ""
 
 # ------------------------------------------------
-# INSTALL / UPDATE PLATFORM
+# INSTALL OR UPDATE PLATFORM
 # ------------------------------------------------
 
 Write-Host "Installing DWH platform..."
@@ -79,6 +79,7 @@ if ($repoExists -eq "yes") {
     Write-Host "Cloning platform..."
 
     wsl bash -c "sudo git clone https://github.com/arturhapurkhaiev/dwh-platform.git /opt/dwh"
+
 }
 
 # ------------------------------------------------
@@ -87,7 +88,7 @@ if ($repoExists -eq "yes") {
 
 Write-Host "Fixing permissions..."
 
-wsl bash -c "sudo chown -R \$USER:\$USER /opt/dwh"
+wsl bash -c 'sudo chown -R $USER:$USER /opt/dwh'
 
 Write-Host ""
 
@@ -100,12 +101,10 @@ Write-Host "Copying configuration..."
 wsl bash -c "mkdir -p /opt/dwh/config"
 
 if (Test-Path "$INSTALL_DIR\config\stores.json") {
-
     wsl bash -c "cp /mnt/c/MiniReportServer/config/stores.json /opt/dwh/config/"
 }
 
 if (Test-Path "$INSTALL_DIR\config\credentials.env") {
-
     wsl bash -c "cp /mnt/c/MiniReportServer/config/credentials.env /opt/dwh/config/"
 }
 
@@ -128,6 +127,11 @@ Write-Host ""
 Write-Host "Building platform..."
 
 wsl bash -c "cd /opt/dwh && make build"
+
+Write-Host ""
+
+Write-Host "Starting platform..."
+
 wsl bash -c "cd /opt/dwh && make up"
 
 Write-Host ""
