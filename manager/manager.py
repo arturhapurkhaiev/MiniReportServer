@@ -12,7 +12,6 @@ import os
 import subprocess
 import webbrowser
 import sys
-from datetime import datetime
 
 PORT = 1433
 
@@ -26,6 +25,7 @@ ADMIN_FILE = os.path.join(BASE_DIR, "..", "config", "admin.env")
 
 SQL_USER = ""
 SQL_PASS = ""
+
 
 # ------------------------------------------------
 # ADMIN LOGIN
@@ -84,15 +84,13 @@ def log(msg):
 
 def check_server():
 
+    s = socket.socket()
+    s.settimeout(1)
+
     try:
 
-        s = socket.socket()
-        s.settimeout(1)
-
         s.connect(("127.0.0.1", 3000))
-
         s.close()
-
         return "Metabase running"
 
     except:
@@ -118,7 +116,6 @@ def check_cron():
             return "Cron active"
 
     except:
-
         pass
 
     return "Cron not configured"
@@ -130,12 +127,10 @@ def check_cron():
 
 def last_update():
 
-    log_file = "/opt/dwh/logs/update.log"
-
     try:
 
         result = subprocess.check_output(
-            ["wsl", "bash", "-c", f"tail -n 1 {log_file}"],
+            ["wsl", "bash", "-c", "tail -n 1 /opt/dwh/logs/update.log"],
             stderr=subprocess.DEVNULL
         ).decode()
 
@@ -158,14 +153,12 @@ def check_store(host):
     try:
 
         s.connect((host, PORT))
-
         s.close()
-
-        return "online"
+        return True
 
     except:
 
-        return "offline"
+        return False
 
 
 # ------------------------------------------------
@@ -188,8 +181,7 @@ def refresh_status():
 
         for store in data["stores"]:
 
-            if check_store(store["host"]) == "online":
-
+            if check_store(store["host"]):
                 online += 1
 
         stores_status.set(f"{online} / {len(data['stores'])} online")
@@ -315,6 +307,37 @@ def get_store_info(ip):
         pass
 
     return results
+
+
+# ------------------------------------------------
+# CHECKBOX TOGGLE
+# ------------------------------------------------
+
+def toggle_check(event):
+
+    region = tree.identify("region", event.x, event.y)
+
+    if region != "cell":
+        return
+
+    column = tree.identify_column(event.x)
+
+    if column != "#1":
+        return
+
+    item = tree.identify_row(event.y)
+
+    if not item:
+        return
+
+    values = list(tree.item(item, "values"))
+
+    if values[0] == "☐":
+        values[0] = "☑"
+    else:
+        values[0] = "☐"
+
+    tree.item(item, values=values)
 
 
 # ------------------------------------------------
@@ -516,10 +539,21 @@ columns = ("check", "ip", "db", "store", "version")
 
 tree = ttk.Treeview(root, columns=columns, show="headings")
 
-for col in columns:
-    tree.heading(col, text=col)
+tree.heading("check", text="")
+tree.heading("ip", text="Server IP")
+tree.heading("db", text="Database")
+tree.heading("store", text="Store name")
+tree.heading("version", text="Version")
+
+tree.column("check", width=40, anchor="center")
+tree.column("ip", width=150)
+tree.column("db", width=160)
+tree.column("store", width=420)
+tree.column("version", width=80)
 
 tree.pack(fill="both", expand=True, pady=10)
+
+tree.bind("<Button-1>", toggle_check)
 
 install_btn = tk.Button(root, text="Generate config", width=25, command=save_config)
 install_btn.pack(pady=5)
