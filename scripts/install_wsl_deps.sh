@@ -12,6 +12,9 @@ docker-compose \
 python3 \
 python3-pip \
 freetds-dev \
-freetds-bin
+freetds-bin \
+dos2unix
 
+echo ""
 echo "Ubuntu dependencies installed"
+echo ""
