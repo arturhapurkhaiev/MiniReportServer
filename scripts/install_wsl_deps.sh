@@ -10,12 +10,17 @@ sudo apt install -y \
 git \
 make \
 docker.io \
-docker-compose-plugin \
 python3 \
 python3-pip \
 freetds-dev \
 freetds-bin \
 dos2unix
+
+echo ""
+echo "Installing docker-compose..."
+echo ""
+
+sudo pip3 install docker-compose
 
 echo ""
 echo "Starting Docker..."
