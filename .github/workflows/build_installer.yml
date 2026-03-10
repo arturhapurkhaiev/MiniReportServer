@@ -15,29 +15,20 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: "3.11"
 
-
     - name: Install dependencies
       run: |
         pip install pyinstaller
 
-
     - name: Build installer
-      run: |
-        pyinstaller --onefile installer/installer.py ^
-        --add-data "manager;manager" ^
-        --add-data "scripts;scripts" ^
-        --add-data "config;config" ^
-        --add-data "requirements.txt;."
-
+      run: pyinstaller --name MiniSoftInstaller --onefile installer/installer.py --add-data "manager;manager" --add-data "scripts;scripts" --add-data "config;config" --add-data "requirements.txt;."
 
     - name: Upload installer
       uses: actions/upload-artifact@v4
       with:
         name: MiniSoftInstaller
-        path: dist/installer.exe
+        path: dist/MiniSoftInstaller.exe
