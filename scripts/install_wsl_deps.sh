@@ -1,6 +1,8 @@
 #!/bin/bash
 
+echo ""
 echo "Installing Ubuntu dependencies..."
+echo ""
 
 sudo apt update
 
@@ -16,10 +18,14 @@ freetds-bin \
 dos2unix
 
 echo ""
-
 echo "Starting Docker..."
+echo ""
 
 sudo service docker start
+
+echo ""
+echo "Adding user to docker group..."
+echo ""
 
 sudo usermod -aG docker $USER
 
