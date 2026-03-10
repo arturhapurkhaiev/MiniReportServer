@@ -44,7 +44,6 @@ wsl -l > $null 2>&1
 if ($LASTEXITCODE -ne 0) {
 
     Write-Host "WSL not installed"
-    Write-Host "Install WSL first: wsl --install -d Ubuntu"
     exit
 }
 
@@ -55,21 +54,21 @@ Write-Host ""
 # INSTALL UBUNTU DEPENDENCIES
 # ------------------------------------------------
 
-Write-Host "Installing Ubuntu dependencies..."
+Write-Host "Installing Ubuntu packages..."
 
 wsl bash /mnt/c/MiniReportServer/scripts/install_wsl_deps.sh
 
 Write-Host ""
 
 # ------------------------------------------------
-# INSTALL / UPDATE DWH PLATFORM
+# INSTALL / UPDATE PLATFORM
 # ------------------------------------------------
 
 Write-Host "Installing DWH platform..."
 
-$checkRepo = wsl bash -c "if [ -d /opt/dwh ]; then echo 1; else echo 0; fi"
+$repoExists = wsl bash -c "if [ -d /opt/dwh ]; then echo yes; else echo no; fi"
 
-if ($checkRepo -eq "1") {
+if ($repoExists -eq "yes") {
 
     Write-Host "Updating existing platform..."
 
@@ -80,7 +79,6 @@ if ($checkRepo -eq "1") {
     Write-Host "Cloning platform..."
 
     wsl bash -c "sudo git clone https://github.com/arturhapurkhaiev/dwh-platform.git /opt/dwh"
-
 }
 
 # ------------------------------------------------
@@ -135,7 +133,7 @@ wsl bash -c "cd /opt/dwh && make up"
 Write-Host ""
 
 # ------------------------------------------------
-# PLATFORM INIT
+# INIT PLATFORM
 # ------------------------------------------------
 
 Write-Host "Initializing platform..."
