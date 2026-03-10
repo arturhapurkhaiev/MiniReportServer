@@ -30,5 +30,11 @@ echo ""
 sudo usermod -aG docker $USER
 
 echo ""
+echo "Fixing git safe directory..."
+echo ""
+
+git config --global --add safe.directory /opt/dwh
+
+echo ""
 echo "Ubuntu dependencies installed"
 echo ""
