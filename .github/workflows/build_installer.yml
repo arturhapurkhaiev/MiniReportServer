@@ -44,3 +44,4 @@ jobs:
       with:
         name: MiniSoftInstaller
         path: dist/MiniSoftInstaller.exe
+
