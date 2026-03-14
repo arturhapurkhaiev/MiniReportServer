@@ -68,7 +68,7 @@ Write-Host "Installing DWH platform..."
 
 $repoExists = wsl bash -c "if [ -d /opt/dwh ]; then echo yes; else echo no; fi"
 
-if ($repoExists -eq "yes") {
+if ($repoExists.Trim() -eq "yes") {
 
     Write-Host "Updating existing platform..."
 
@@ -82,13 +82,15 @@ if ($repoExists -eq "yes") {
 
 }
 
+Write-Host ""
+
 # ------------------------------------------------
-# FIX PERMISSIONS
+# FIX PERMISSIONS (ONLY REPO)
 # ------------------------------------------------
 
 Write-Host "Fixing permissions..."
 
-wsl bash -c 'sudo chown -R $USER:$USER /opt/dwh'
+wsl bash -c "sudo chown -R $USER:$USER /opt/dwh"
 
 Write-Host ""
 
@@ -126,13 +128,23 @@ Write-Host ""
 
 Write-Host "Building platform..."
 
-wsl bash -c "cd /opt/dwh && make build"
+wsl bash -c "cd /opt/dwh && docker compose build"
 
 Write-Host ""
 
 Write-Host "Starting platform..."
 
-wsl bash -c "cd /opt/dwh && make up"
+wsl bash -c "cd /opt/dwh && docker compose up -d"
+
+Write-Host ""
+
+# ------------------------------------------------
+# WAIT FOR POSTGRES
+# ------------------------------------------------
+
+Write-Host "Waiting for Postgres..."
+
+wsl bash -c "sleep 10"
 
 Write-Host ""
 
